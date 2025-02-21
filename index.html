@@ -1,205 +1,130 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>WebXR: YouTube & Punching Orbs</title>
-  <meta name="description" content="Watch YouTube in VR and punch orbs!">
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>Orb Punch VR - Dog Texture</title>
+    
+    <!-- Latest A-Frame -->
+    <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
+    
+    <!-- Fixed physics system -->
+    <script src="https://cdn.jsdelivr.net/gh/c-frame/aframe-physics-system@master/dist/aframe-physics-system.min.js"></script>
+    
+    <script>
+      AFRAME.registerComponent('orb-manager', {
+        init: function () {
+          this.leftHand = document.querySelector('#leftHand');
+          this.rightHand = document.querySelector('#rightHand');
+          this.orbs = [];
+          this.score = 0;
+          this.scoreEl = document.querySelector('#score');
 
-  <!-- A-Frame (version 1.4.0 or newer) -->
-  <script src="https://aframe.io/releases/1.4.0/aframe.min.js"></script>
-
-  <!-- Capture console errors and window errors -->
-  <script>
-    // 1) Catch global runtime errors
-    window.addEventListener('error', function (event) {
-      alert(
-        "Global Error:\n" + 
-        event.message + 
-        "\nSource: " + event.filename + ":" + event.lineno + ":" + event.colno
-      );
-    });
-
-    // 2) Override console.error
-    (function () {
-      const oldConsoleError = console.error;
-      console.error = function (...args) {
-        alert("Console Error:\n" + args.join(" "));
-        oldConsoleError.apply(console, args);
-      };
-    })();
-  </script>
-
-  <script>
-    // Punchable orb component
-    AFRAME.registerComponent('punchable-orb', {
-      schema: {
-        speed: {type: 'number', default: 0.001},
-      },
-      init: function () {
-        // Give each orb a random direction
-        this.direction = new THREE.Vector3(
-          (Math.random() - 0.5) * 2,
-          (Math.random() - 0.5) * 2,
-          (Math.random() - 0.5) * 2
-        ).normalize();
-        this.punched = false;
-      },
-      tick: function (time, timeDelta) {
-        // Move the orb around
-        const pos = this.el.object3D.position;
-        const delta = timeDelta * this.data.speed;
-        pos.addScaledVector(this.direction, delta);
-
-        // Check collisions with controllers/hands
-        const hands = document.querySelectorAll('[tracked-controls], [hand-controls]');
-        hands.forEach(hand => {
-          const handPos = hand.object3D.position;
-          const dist = pos.distanceTo(handPos);
-          if (dist < 0.15 && !this.punched) {
-            this.onPunched();
-          }
-        });
-      },
-      onPunched: function() {
-        this.punched = true;
-        this.el.setAttribute('visible', false);  // Hide the orb
-        // Remove from DOM after a short delay
-        setTimeout(() => {
-          if (this.el.parentNode) {
-            this.el.parentNode.removeChild(this.el);
-          }
-        }, 100);
-      }
-    });
-
-    // Spawner component: spawns orbs around user
-    AFRAME.registerComponent('orb-spawner', {
-      schema: {
-        interval: {type: 'number', default: 3000} // spawn every 3 seconds
-      },
-      init: function() {
-        this.lastSpawnTime = 0;
-      },
-      tick: function(time, timeDelta) {
-        if (time - this.lastSpawnTime > this.data.interval) {
+          // Spawn the first orb
           this.spawnOrb();
-          this.lastSpawnTime = time;
-        }
-      },
-      spawnOrb: function() {
-        const orb = document.createElement('a-sphere');
-        // Random position in a ~5m cube around the user
-        const range = 2.5;
-        const x = (Math.random() - 0.5) * range * 2;
-        const y = Math.random() + 1; 
-        const z = (Math.random() - 0.5) * range * 2;
 
-        orb.setAttribute('position', {x, y, z});
-        orb.setAttribute('radius', 0.15);
-        orb.setAttribute('color', '#' + (Math.random() * 0xFFFFFF << 0).toString(16));
-        orb.setAttribute('punchable-orb', 'speed: 0.3'); 
-        this.el.sceneEl.appendChild(orb);
-      }
-    });
-  </script>
-</head>
+          // Repeat spawning every 5 seconds
+          setInterval(() => {
+            this.orbs = [];
+            this.spawnOrb();
+          }, 2300);
+        },
 
-<body>
-  <!-- A-Frame scene (no embedded) so default Enter VR button appears -->
-  <a-scene vr-mode-ui="enabled: true">
-    <!-- WebXR capabilities -->
-    <a-entity xr="local-floor: true"></a-entity>
+spawnOrb: function () {
+    if (this.orbs.length > 0) return; // Only one orb at a time
 
-    <!-- Camera + Basic Controllers -->
-    <a-entity camera look-controls position="0 1.6 0"></a-entity>
-    <a-entity laser-controls="hand: right"></a-entity>
-    <a-entity laser-controls="hand: left"></a-entity>
+    const sceneEl = this.el;
+    const orb = document.createElement('a-entity');
 
-    <!-- Ground plane -->
-    <a-plane rotation="-90 0 0" width="10" height="10" color="#444"></a-plane>
+    let x, y, z;
+    let tooClose = true;
 
-    <!-- Floating screen for YouTube (black plane) -->
-    <a-entity id="video-screen" position="0 2 -2">
-      <a-plane
-        id="video-plane"
-        width="1.78"
-        height="1"
-        color="#000"
-        material="shader: flat;"
-      ></a-plane>
+    // Generate positions ensuring separation
+    while (tooClose) {
+        x = (Math.random() - 0.5) * 6; // Increase horizontal spread
+        y = Math.random() * 2.5 + 1; // More variation in height
+        z = -10; // Start further away
 
-      <!-- Simple 3D "Play/Pause" box -->
-      <a-box
-        id="play-button"
-        color="#4CAF50"
-        depth="0.02"
-        height="0.2"
-        width="0.4"
-        position="0 -0.8 0"
-        event-set__enter="_event: mouseenter; material.color: #8BC34A"
-        event-set__leave="_event: mouseleave; material.color: #4CAF50"
-        text="value: Play/Pause; align: center; color: #FFF; width: 2"
-      ></a-box>
-    </a-entity>
-
-    <!-- Orb spawner -->
-    <a-entity orb-spawner="interval: 3000"></a-entity>
-
-  </a-scene>
-
-  <!-- 2D YouTube Overlay (not in 3D space) -->
-  <div id="youtube-overlay" style="
-       position: absolute; 
-       top: 50px; left: 50%;
-       transform: translateX(-50%);
-       width: 640px; height: 360px;
-       border: 2px solid #CCC; background: #000;
-       z-index: 999;"
-  >
-    <iframe
-      id="youtube-player"
-      width="640"
-      height="360"
-      src="https://www.youtube.com/embed/dQw4w9WgXcQ?enablejsapi=1&playsinline=1"
-      frameborder="0"
-      allowfullscreen
-    ></iframe>
-  </div>
-
-  <!-- YouTube IFrame API -->
-  <script>
-    let player;
-    function onYouTubeIframeAPIReady() {
-      player = new YT.Player('youtube-player', {
-        events: {
-          'onReady': onPlayerReady
-        }
-      });
+        // Check if this position is too close to an existing orb
+        tooClose = this.orbs.some(existingOrb => {
+            const existingPos = existingOrb.object3D.position;
+            return Math.abs(existingPos.x - x) < 1.5 && Math.abs(existingPos.y - y) < 1.5;
+        });
     }
 
-    function onPlayerReady(event) {
-      console.log('YouTube Player Ready.');
-    }
+    // Create the orb
+    orb.setAttribute('geometry', { primitive: 'sphere', radius: 0.3 });
+    const randomColor = Math.random() < 0.5 ? 'red' : 'blue';
+    orb.setAttribute('material', { color: randomColor });
+    orb.setAttribute('position', { x, y, z });
 
-    // Load the IFrame Player API
-    const scriptTag = document.createElement('script');
-    scriptTag.src = "https://www.youtube.com/iframe_api";
-    document.body.appendChild(scriptTag);
+    // Collision filter
+    orb.setAttribute('collision-filter', { group: 'orbs', collidesWith: ['hands'] });
 
-    // Toggle play/pause on the "Play/Pause" 3D box
-    document.addEventListener('DOMContentLoaded', () => {
-      const playButton = document.getElementById('play-button');
-      playButton.addEventListener('click', () => {
-        if (player && player.getPlayerState) {
-          const state = player.getPlayerState();
-          if (state === YT.PlayerState.PLAYING) {
-            player.pauseVideo();
-          } else {
-            player.playVideo();
-          }
-        }
-      });
+    // Add physics body with gravity disabled
+    orb.setAttribute('dynamic-body', 'mass: 0; gravity: 0; shape: sphere;');
+
+    // Calculate direction toward the camera
+    const camera = document.querySelector('#camera');
+    const cameraPosition = camera.object3D.position.clone();
+    const orbPos = new THREE.Vector3(x, y, z);
+    const direction = cameraPosition.sub(orbPos).normalize();
+
+    // Apply velocity to move toward the player
+    const speed = 2.0;
+    orb.setAttribute('velocity', {
+        x: direction.x * speed,
+        y: direction.y * speed,
+        z: direction.z * speed
     });
-  </script>
-</body>
+
+    // Listen for collisions with hands
+    orb.addEventListener('collide', (evt) => {
+        if (event.detail.body.el === this.leftHand || event.detail.body.el === this.rightHand) {
+        console.log("Collision detected!", evt.detail.body.el); // Debugging
+        this.score++;
+        this.scoreEl.setAttribute('text', "value: Score: " + this.score + "; align: center; color: blue;");
+        }
+    });
+
+    sceneEl.appendChild(orb);
+    this.orbs.push(orb);
+}
+
+      });
+    </script>
+  </head>
+
+  <body>
+    <a-scene physics orb-manager>
+      
+      <!-- Camera -->
+      <a-entity id="camera" camera look-controls wasd-controls position="0 1.6 0" static-body></a-entity>
+
+      <!-- Quest Controllers -->
+      <a-entity id="leftHand"
+                oculus-touch-controls="hand: left"
+                vive-controls="hand: left"
+                hand-tracking-controls="hand: left"
+                static-body
+                collision-filter="group: hands; collidesWith: orbs">
+        <a-sphere radius="0.05" color="blue"></a-sphere>
+      </a-entity>
+
+      <a-entity id="rightHand"
+                oculus-touch-controls="hand: right"
+                vive-controls="hand: right"
+                hand-tracking-controls="hand: right"
+                static-body
+                collision-filter="group: hands; collidesWith: orbs">
+        <a-sphere radius="0.05" color="red"></a-sphere>
+      </a-entity>
+
+      <!-- Scoreboard -->
+      <a-entity id="score" text="value: Score: 0; align: center; color: blue; width: 5" position="0 2 -3"></a-entity>
+
+      <!-- Lighting -->
+      <a-entity light="type: ambient; color: #444"></a-entity>
+      <a-entity light="type: directional; color: #FFF; intensity: 1" position="1 3 1"></a-entity>
+    </a-scene>
+  </body>
 </html>
